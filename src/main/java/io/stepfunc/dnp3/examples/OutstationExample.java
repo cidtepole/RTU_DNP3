@@ -17,10 +17,7 @@ import static io.stepfunc.dnp3.examples.OutstationExample.now;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.time.Duration;
-import java.util.List;
-import java.util.concurrent.ExecutionException;
 import org.joou.UByte;
-import org.joou.UInteger;
 import org.joou.ULong;
 import org.joou.UShort;
 
