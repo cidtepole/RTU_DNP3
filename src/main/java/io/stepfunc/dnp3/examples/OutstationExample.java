@@ -9,6 +9,7 @@
 
 package io.stepfunc.dnp3.examples;
 
+import com.pi4j.io.gpio.digital.DigitalState;
 import static org.joou.Unsigned.*;
 
 import io.stepfunc.dnp3.*;
@@ -136,6 +137,15 @@ class TestOutstationInformation implements OutstationInformation {
 // ANCHOR: control_handler
 class TestControlHandler implements ControlHandler {
 
+    private final GpioControllerPi4j gpio;    
+    
+     public TestControlHandler(GpioControllerPi4j gpio){
+        this.gpio = gpio;
+    }   
+    
+    
+    
+    
   @Override
   public void beginFragment() {}
 
@@ -155,36 +165,31 @@ class TestControlHandler implements ControlHandler {
   public CommandStatus operateG12v1(Group12Var1 control, UShort index, OperateType opType, DatabaseHandle database) {
     if (index.compareTo(ushort(10)) < 0 && (control.code.opType == OpType.PULSE_ON && control.code.tcc == TripCloseCode.CLOSE)) {
       boolean status = true;
+      
+      try {
+            gpio.pulseOutputOn(index.intValue(), 500);
+      } catch (Exception e) {
+            System.out.println(e.getMessage());
+       }  
+
+
       database.transaction(db -> db.updateBinaryOutputStatus(new BinaryOutputStatus(index, status, new Flags(Flag.ONLINE), OutstationExample.now()), UpdateOptions.detectEvent()));
       
-      database.transaction(
-                  db -> {
-                    BinaryInput value =
-                        new BinaryInput(
-                            index,
-                            status,
-                            new Flags(Flag.ONLINE),
-                            now());
-                    db.updateBinaryInput(value, UpdateOptions.detectEvent());
-                  });
       
       return CommandStatus.SUCCESS;
     } else {        
         
            if (index.compareTo(ushort(10)) < 0 && (control.code.opType == OpType.PULSE_ON && control.code.tcc == TripCloseCode.TRIP)) {
-             boolean status = false;
-             database.transaction(db -> db.updateBinaryOutputStatus(new BinaryOutputStatus(index, status, new Flags(Flag.ONLINE), OutstationExample.now()), UpdateOptions.detectEvent()));
-      
-             database.transaction(
-                  db -> {
-                    BinaryInput value =
-                        new BinaryInput(
-                            index,
-                            status,
-                            new Flags(Flag.ONLINE),
-                            now());
-                    db.updateBinaryInput(value, UpdateOptions.detectEvent());
-                  });
+                boolean status = false; 
+                
+                try {
+                    gpio.pulseOutputOff(index.intValue(), 500);
+                } catch (Exception e) {
+                    System.out.println(e.getMessage());
+                }               
+
+                database.transaction(db -> db.updateBinaryOutputStatus(new BinaryOutputStatus(index, status, new Flags(Flag.ONLINE), OutstationExample.now()), UpdateOptions.detectEvent()));    
+             
       
             return CommandStatus.SUCCESS;
            }       
@@ -266,14 +271,14 @@ class TestConnectionStateListener implements ConnectionStateListener {
 
 
 
+
 public class OutstationExample {
     
     // Variables globales (de clase)
   private static int binaryPoints;
   private static int analogPoints;
   private static int binaryOutputStatus;
-  private static int counterPoints;
-  
+  private static int counterPoints; 
   
   
 
@@ -298,16 +303,16 @@ public class OutstationExample {
     return config.withDecodeLevel(new DecodeLevel().withApplication(AppDecodeLevel.OBJECT_HEADERS).withLink(LinkDecodeLevel.PAYLOAD)).withFeatures(outstationFeatures);
   }
 
-  private static void runTcp(Runtime runtime, String ip, String port, UShort outstationAddress, UShort masterAddress) {
+  private static void runTcp(Runtime runtime, String ip, String port, UShort outstationAddress, UShort masterAddress, GpioControllerPi4j gpio) {
     OutstationServer server = OutstationServer.createTcpServer(runtime, LinkErrorMode.CLOSE, ip + ":" + port);
     try {
-      runServer(server, outstationAddress, masterAddress);
+      runServer(server, outstationAddress, masterAddress, gpio);
     } finally {
       server.shutdown();
     }
   }
 
-  private static void runSerial(Runtime runtime, String comPort, UShort outstationAddress, UShort masterAddress) {
+  private static void runSerial(Runtime runtime, String comPort, UShort outstationAddress, UShort masterAddress, GpioControllerPi4j gpio) {
     Outstation outstation = Outstation.createSerialSession2(
         runtime,
         comPort,
@@ -316,17 +321,18 @@ public class OutstationExample {
         getOutstationConfig( outstationAddress, masterAddress),
         new TestOutstationApplication(),
         new TestOutstationInformation(),
-        new TestControlHandler(),
+        new TestControlHandler(gpio),
         state -> System.out.println("Port state change: " + state)
     );   
      
     
-    runOutstation(outstation);
+    runOutstation(outstation, gpio);
   }
 
   public static void main(String[] args) {
       
-    displayLogo();  
+    displayLogo();
+    GpioControllerPi4j gpio = new GpioControllerPi4j();    
       
     try (BufferedReader reader = new BufferedReader(new InputStreamReader(System.in))) {
       System.out.println("Select communication type: ");
@@ -359,11 +365,11 @@ public class OutstationExample {
         String ip = reader.readLine();
         System.out.println("\nEnter Port: ");
         String port = reader.readLine();
-        runTcp(runtime, ip, port, outstationAddress, masterAddress);
+        runTcp(runtime, ip, port, outstationAddress, masterAddress, gpio);
       } else if ("2".equals(choice)) {
         System.out.println("\nEnter COM port: ");
         String comPort = reader.readLine();
-        runSerial(runtime, comPort, outstationAddress, masterAddress);
+        runSerial(runtime, comPort, outstationAddress, masterAddress, gpio);
       } else {
         System.out.println("\nInvalid choice");
       }
@@ -372,20 +378,20 @@ public class OutstationExample {
     }
   }
 
-  private static void runServer(OutstationServer server, UShort outstationAddress, UShort masterAddress) {
+  private static void runServer(OutstationServer server, UShort outstationAddress, UShort masterAddress, GpioControllerPi4j gpio) {
     Outstation outstation = server.addOutstation(
         getOutstationConfig(outstationAddress, masterAddress),
         new TestOutstationApplication(),
         new TestOutstationInformation(),
-        new TestControlHandler(),
+        new TestControlHandler(gpio),
         new TestConnectionStateListener(),
         AddressFilter.any()
     );
     server.bind();
-    runOutstation(outstation);
+    runOutstation(outstation, gpio);
   }
 
-  private static void runOutstation(Outstation outstation) {
+  private static void runOutstation(Outstation outstation, GpioControllerPi4j gpio) {
     outstation.transaction((db) -> initializeDatabase(db));
    
             
@@ -399,6 +405,34 @@ public class OutstationExample {
     
     outstation.setDecodeLevel( new DecodeLevel().withApplication(AppDecodeLevel.OBJECT_HEADERS).withLink(LinkDecodeLevel.NOTHING).withPhysical(PhysDecodeLevel.NOTHING));      
    
+  
+    
+    for (int i = 0; i < 8; i++) {                
+            
+            int finalI = i;
+            
+            gpio.getInputs().get(i).addListener(event -> {
+                DigitalState state = event.state();
+                boolean pointValue = (state == DigitalState.HIGH);
+
+                System.out.println("Entrada " + finalI + " (GPIO " + gpio + ") cambió a: " + state);
+
+                UShort index = ushort(finalI);
+
+                outstation.transaction(
+                    db -> {
+                        BinaryInput value = new BinaryInput(
+                            index,
+                            pointValue,
+                            onlineFlags,
+                            OutstationExample.now());
+                        db.updateBinaryInput(value, detectEvent);
+                    });
+            });
+
+        }
+    
+    
     
     try {
       while (true) {  
@@ -406,7 +440,8 @@ public class OutstationExample {
          BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));   
          System.out.println("Enter a command or type 'x' to exit:");
             String command = reader.readLine();
-            if (command.equals("x")) {                
+            if (command.equals("x")) {
+                gpio.shutdown();                
                 System.out.println("Saliendo...");
                 System.exit(0);
             }            
@@ -415,6 +450,21 @@ public class OutstationExample {
         
         String[] parts = command.split(" ");
         String cmd = parts[0].toLowerCase();
+        
+        /*
+        for (int i = 0; i < 8; i++) {
+            final boolean value = gpio.readInput(i);
+            final int index = i;
+
+            outstation.transaction(db -> {
+            db.updateBinaryInput(new BinaryInput(ushort(index),
+                    value,
+                    new Flags(Flag.ONLINE),
+                    OutstationExample.now()),
+                    UpdateOptions.detectEvent());
+            });           
+        }*/
+
         
         
         try {        
@@ -550,9 +600,13 @@ public class OutstationExample {
           System.out.println("Invalid point index.");
         }
       }
+     
+      
     } catch (Exception ex) {
       System.out.println(ex.getMessage());
     }
+    
+    gpio.shutdown();
   }
 
   

@@ -3,46 +3,147 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
+     
     <groupId>io.stepfunc.dnp3</groupId>
     <artifactId>examples</artifactId>
-    <version>1.5.0</version>
-
+    <name>RTU :: DNP3 :: project</name>
+    <description>RTU DNP3</description>
+    <version>0.0.1</version>   
+    
+    
+    <!-- BUILD PROPERTIES -->
     <properties>
-        <maven.compiler.source>1.8</maven.compiler.source>
-        <maven.compiler.target>1.8</maven.compiler.target>
+        <!-- PROJECT ENCODING PROPERTIES -->
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <main.class>io.stepfunc.dnp3.examples.OutstationExample</main.class>
+
+        <!-- JAVA COMPILER VERSIONS -->
+        <java.version>11</java.version>
+        <maven.compiler.source>${java.version}</maven.compiler.source>
+        <maven.compiler.target>${java.version}</maven.compiler.target>
+
+        <!-- DEPENDENCIES VERSIONS -->
+        <slf4j.version>2.0.12</slf4j.version>
+        <pi4j.version>2.5.1</pi4j.version>
+
+        <!-- BUILD PLUGIN VERSIONS -->
+        <maven-compiler-plugin.version>3.8.1</maven-compiler-plugin.version>
+        <maven-jar-plugin.version>3.1.0</maven-jar-plugin.version>
+        <maven-shade-plugin.version>3.2.4</maven-shade-plugin.version>
     </properties>
+    
+   
 
     <dependencies>
-        <!-- Dependencia de DNP3 -->
+        <!-- OpenDNP3 -->
+    <dependency>
+        <groupId>io.stepfunc</groupId>
+        <artifactId>dnp3</artifactId>
+        <version>1.5.0</version>
+    </dependency>
+
+    <!-- jOOU (unsigned integers para DNP3) -->
+    <dependency>
+        <groupId>org.jooq</groupId>
+        <artifactId>joou</artifactId>
+        <version>0.9.4</version>
+    </dependency>
+
+    <!-- SLF4J -->
+    <dependency>
+        <groupId>org.slf4j</groupId>
+        <artifactId>slf4j-api</artifactId>
+        <version>${slf4j.version}</version>
+    </dependency>
+    
+    <dependency>
+        <groupId>org.slf4j</groupId>
+        <artifactId>slf4j-simple</artifactId>
+        <version>${slf4j.version}</version>
+    </dependency>
+
+    <!-- Pi4J -->
+    <dependency>
+        <groupId>com.pi4j</groupId>
+        <artifactId>pi4j-core</artifactId>
+        <version>${pi4j.version}</version>
+    </dependency>
+    <dependency>
+        <groupId>com.pi4j</groupId>
+        <artifactId>pi4j-plugin-raspberrypi</artifactId>
+        <version>${pi4j.version}</version>
+    </dependency>
+    <dependency>
+        <groupId>com.pi4j</groupId>
+        <artifactId>pi4j-plugin-gpiod</artifactId>
+        <version>${pi4j.version}</version>
+    </dependency>
         <dependency>
-            <groupId>io.stepfunc</groupId>
-            <artifactId>dnp3</artifactId>
-            <version>1.5.0</version>
+            <groupId>org.jooq</groupId>
+            <artifactId>joou-java-6</artifactId>
+            <version>0.9.4</version>
         </dependency>
     </dependencies>
 
     <build>
+        <finalName>rtu-example-fatjar</finalName>
+
         <plugins>
-            <!-- Maven Shade Plugin para crear un Fat JAR -->
+            <!--
+            https://maven.apache.org/plugins/maven-compiler-plugin/
+            The Compiler Plugin is used to compile the sources of your project.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>${maven-compiler-plugin.version}</version>
+                <configuration>
+                    <release>${java.version}</release>
+                    <showDeprecation>true</showDeprecation>
+                    <showWarnings>true</showWarnings>
+                    <verbose>false</verbose>
+                </configuration>
+            </plugin>
+
+            <!--
+            https://maven.apache.org/plugins/maven-jar-plugin/
+            This plugin provides the capability to build (executable) jars and is used here to set the mainClass
+            which will start the application.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>${maven-jar-plugin.version}</version>
+                <configuration>
+                    <archive>
+                        <manifest>
+                            <mainClass>${main.class}</mainClass>
+                        </manifest>
+                    </archive>
+                </configuration>
+            </plugin>
+
+            <!--
+            https://maven.apache.org/plugins/maven-shade-plugin/
+            This plugin provides the capability to package the artifact in an uber-jar, including its dependencies and
+            to shade - i.e. rename - the packages of some of the dependencies. The transformer will combine the files
+            in the META-INF.services directories of multiple Pi4J plugins with the same package name into one file.
+            -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>
-                <version>3.2.4</version>
+                <version>${maven-shade-plugin.version}</version>
+                <configuration>
+                    <transformers>
+                        <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                    </transformers>
+                </configuration>
                 <executions>
                     <execution>
                         <phase>package</phase>
                         <goals>
                             <goal>shade</goal>
                         </goals>
-                        <configuration>
-                            <transformers>
-                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                                    <!-- Clase principal que contiene el método main -->
-                                    <mainClass>io.stepfunc.dnp3.examples.OutstationExample</mainClass>
-                                </transformer>
-                            </transformers>
-                        </configuration>
                     </execution>
                 </executions>
             </plugin>
